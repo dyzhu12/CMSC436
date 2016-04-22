@@ -1,15 +1,21 @@
 package tech.randm.googlemapsapi;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
+import android.util.Log;
 import android.view.View;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -26,6 +32,13 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
@@ -41,13 +54,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private static final LatLng CSIC_LOC = new LatLng(38.9899745,-76.9370508);
     //private static final LatLng STAMP = new LatLng(38.9880831,-76.9447758);
 
+
+    private static String directionsApiURL = "https://maps.googleapis.com/maps/api/directions/xml?";
+
     // new camera position
     private static final CameraPosition CSIC =
             new CameraPosition.Builder().target(CSIC_LOC)
-                                        .zoom(15.5f)
-                                        .bearing(0.0f)
-                                        .tilt(0.0f)
-                                        .build();
+                    .zoom(15.5f)
+                    .bearing(0.0f)
+                    .tilt(0.0f)
+                    .build();
 
 
     // using ArrayList to
@@ -147,17 +163,87 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         mMap.addMarker(mMarkerOptions.get(index));
                         break;
                     case 3:
-                        // using intent to launch navigation at Google Maps
-                        Uri gmmIntentUri = Uri.parse("google.navigation:q=38.9915366,-76.9337273");
-                        Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-                        mapIntent.setPackage("com.google.android.apps.maps");
-                        startActivity(mapIntent);
+                        getDirections();
+                        break;
                     default:
                         break;
                 }
                 index++;
             }
         });
+    }
+
+
+    // When user clicks button, calls AsyncTask.
+    // Before attempting to fetch the URL, makes sure that there is a network connection.
+    public void getDirections() {
+        ConnectivityManager connMgr = (ConnectivityManager)
+                getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
+        if (networkInfo != null && networkInfo.isConnected()) {
+
+            // API Key only added for quick and dirty testing -- will remove
+            String apiCall = directionsApiURL + "origin=38.9909013,-76.9342696&destination=38.9910548,-76.938171&key=" + "AIzaSyArttUogDRqOAMXHCoUqEIt_gN2yxjeFUI";
+            new DownloadWebpageTask().execute(apiCall);
+        }
+    }
+
+    private class DownloadWebpageTask extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String... urls) {
+
+            // params comes from the execute() call: params[0] is the url.
+            try {
+                return downloadUrl(urls[0]);
+            } catch (IOException e) {
+                return "Unable to retrieve web page. URL may be invalid.";
+            }
+        }
+        // onPostExecute displays the results of the AsyncTask.
+        @Override
+        protected void onPostExecute(String result) {
+            System.out.println(result);
+        }
+    }
+
+    private String downloadUrl(String myurl) throws IOException {
+        InputStream is = null;
+        // Only display the first 500 characters of the retrieved
+        // web page content.
+        int len = 500;
+
+        try {
+            URL url = new URL(myurl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setReadTimeout(10000 /* milliseconds */);
+            conn.setConnectTimeout(15000 /* milliseconds */);
+            conn.setRequestMethod("GET");
+            conn.setDoInput(true);
+            // Starts the query
+            conn.connect();
+            int response = conn.getResponseCode();
+            Log.d("DEBUG", "The response is: " + response);
+            is = conn.getInputStream();
+
+            // Convert the InputStream into a string
+            String contentAsString = readInputStream(is, len);
+            return contentAsString;
+
+            // Makes sure that the InputStream is closed after the app is
+            // finished using it.
+        } finally {
+            if (is != null) {
+                is.close();
+            }
+        }
+    }
+
+    public String readInputStream(InputStream stream, int len) throws IOException, UnsupportedEncodingException {
+        Reader reader = null;
+        reader = new InputStreamReader(stream, "UTF-8");
+        char[] buffer = new char[len];
+        reader.read(buffer);
+        return new String(buffer);
     }
 
     private void createMarkerOptions() {
